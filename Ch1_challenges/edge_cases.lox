@@ -1,0 +1,12 @@
+// EDGE CASE A: Variable Redeclaration
+var genericValue = "first initialization";
+var genericValue = "second initialization"; 
+print genericValue; 
+
+
+// EDGE CASE B: Self-Referencing Initializer
+// Note:
+// It will throw a runtime error because the variable 
+// is read before its initialization completes.
+//
+// var selfReference = selfReference + 1;
