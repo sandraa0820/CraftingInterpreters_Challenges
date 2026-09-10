@@ -1,0 +1,7 @@
+print 1;
+/* Outside comment
+    /* inside comment */
+    again outside comment 
+*/
+
+print 2;
