@@ -53,4 +53,14 @@ class RpnPrinter implements Expr.Visitor<String> {
             + expr.thenBranch.accept(this) + " "
             + expr.elseBranch.accept(this) + " ?:";
   } 
+
+  @Override
+  public String visitVariableExpr(Expr.Variable expr) {
+    return expr.name.lexeme;
+  }
+
+  @Override
+  public String visitAssignExpr(Expr.Assign expr) {
+    return expr.value.accept(this) + " " + expr.name.lexeme + " =";
+  }
 }
