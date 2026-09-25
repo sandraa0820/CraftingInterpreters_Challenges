@@ -1,8 +1,5 @@
 package lox;
 
-import lox.Expr.Assign;
-import lox.Expr.Variable;
-
 class AstPrinter implements Expr.Visitor<String> {
     String print(Expr expr) {
         return expr.accept(this);
@@ -71,5 +68,11 @@ class AstPrinter implements Expr.Visitor<String> {
     @Override
     public String visitVariableExpr(Expr.Variable expr) {
         return expr.name.lexeme;
+    }
+
+    @Override
+    public String visitLogicalExpr(Expr.Logical expr) {
+        return parenthesize(expr.operator.lexeme,
+            expr.left, expr.right);
     }
 }

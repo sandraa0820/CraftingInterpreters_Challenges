@@ -13,6 +13,13 @@ class RpnPrinter implements Expr.Visitor<String> {
         + expr.operator.lexeme;
   }
 
+  @Override 
+  public String visitLogicalExpr(Expr.Logical expr) {
+    return expr.left.accept(this) + " "
+        + expr.right.accept(this) + " "
+        + expr.operator.lexeme;
+  }
+
   @Override
   public String visitGroupingExpr(Expr.Grouping expr) {
     return expr.expression.accept(this);
