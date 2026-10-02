@@ -70,4 +70,20 @@ class RpnPrinter implements Expr.Visitor<String> {
   public String visitAssignExpr(Expr.Assign expr) {
     return expr.value.accept(this) + " " + expr.name.lexeme + " =";
   }
+
+  @Override
+  public String visitCallExpr(Expr.Call expr) {
+    String result = expr.callee.accept(this);
+
+    for (Expr argument : expr.arguments) {
+      result += " " + argument.accept(this);
+    }
+
+    return result + " call";
+  }
+
+  @Override  
+  public String visitFunctionExpr(Expr.Function expr) {
+    return "fun";
+  }
 }

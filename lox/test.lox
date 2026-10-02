@@ -1,7 +1,17 @@
-print 1;
-/* Outside comment
-    /* inside comment */
-    again outside comment 
-*/
+{
+    var a = "A";
 
-print 2;
+    fun test(x) {
+        var b = "B";
+
+        {
+            var c = "C";
+            print a;
+            print x;
+            print b;
+            print c;
+        }
+    }
+
+    test("X");
+}
