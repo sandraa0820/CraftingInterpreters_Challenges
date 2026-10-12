@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 import lox.Expr.Conditional;
 
@@ -14,6 +16,7 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     private final Map<Expr, Local> locals = new HashMap<>();
     private final Map<Stmt.Var, Integer> localDeclarations = new HashMap<>();
     private final Map<Stmt.Function, Integer> localFunctions = new HashMap<>();
+    private final Deque<LoxFunction> methodStack = new ArrayDeque<>();
     
     private static class Local {
         final int depth;
@@ -80,6 +83,44 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         }
 
         return evaluate(expr.right);
+    }
+
+    @Override
+    public Object visitSetExpr(Expr.Set expr) {
+        Object object = evaluate(expr.object);
+
+        if (!(object instanceof LoxInstance)) { 
+        throw new RuntimeError(expr.name,
+                             "Only instances have fields.");
+        }
+
+        Object value = evaluate(expr.value);
+        ((LoxInstance)object).set(expr.name, value);
+        return value;
+    }
+
+    @Override
+    public Object visitSuperExpr(Expr.Super expr) {
+        Local local = locals.get(expr);
+        int distance = local.depth;
+        LoxClass superclass = (LoxClass)environment.getAt(
+            distance, local.index);
+        
+        LoxInstance object = (LoxInstance)environment.getAt(
+        distance - 1, 0);
+
+        LoxFunction method = superclass.findMethod(expr.method.lexeme);
+
+        if (method == null) {
+            throw new RuntimeError(expr.method,
+                "Undefined property '" + expr.method.lexeme + "'.");
+        }
+        return method.bind(object);
+    }
+
+    @Override
+    public Object visitThisExpr(Expr.This expr) {
+        return lookUpVariable(expr.keyword, expr);
     }
 
     @Override
@@ -198,6 +239,60 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Void visitClassStmt(Stmt.Class stmt) {
+        Object superclass = null;
+        if (stmt.superclass != null) {
+            superclass = evaluate(stmt.superclass);
+            if (!(superclass instanceof LoxClass)) {
+                throw new RuntimeError(stmt.superclass.name,
+            "Superclass must be a class.");
+            }
+        }
+
+        environment.define(stmt.name.lexeme, null);
+
+
+        if (stmt.superclass != null) {
+            environment = new Environment(environment);
+            environment.define(0, superclass);
+        }
+
+        Map<String, LoxFunction> methods = new HashMap<>();
+
+        for (Stmt.Function method : stmt.methods) {
+            LoxFunction function = new LoxFunction(
+                method,
+                environment,
+                method.name.lexeme.equals("init")
+            );
+
+            methods.put(method.name.lexeme, function);
+        }
+
+        // this is for Static methods
+
+         Map<String, LoxFunction> classMethods = new HashMap<>();
+
+        for (Stmt.Function method : stmt.classMethods) {
+        LoxFunction function = new LoxFunction(
+            method,
+            environment,
+            false);
+        
+            classMethods.put(method.name.lexeme, function);
+        }
+
+        LoxClass klass = new LoxClass(stmt.name.lexeme, (LoxClass)superclass, methods, classMethods);
+        if (superclass != null) {
+            environment = environment.enclosing;
+        }
+
+        environment.assign(stmt.name, klass);
+
+        return null;
+    }
+
+    @Override
     public Void visitExpressionStmt(Stmt.Expression stmt) {
         evaluate(stmt.expression);
         return null;
@@ -205,7 +300,7 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     @Override
     public Void visitFunctionStmt(Stmt.Function stmt) {
-        LoxFunction function = new LoxFunction(stmt, environment);
+        LoxFunction function = new LoxFunction(stmt, environment, false);
 
         Integer index = localFunctions.get(stmt);
 
@@ -338,6 +433,16 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             case STAR:
                 checkNumberOperands(expr.operator, left, right);
                 return (double)left * (double)right;
+            
+            case PERCENT: 
+                checkNumberOperands(expr.operator, left, right);
+
+                if ((double) right == 0) {
+                    throw new RuntimeError(expr.operator,
+                        "Cannot divide by zero.");
+                }
+
+                return (double) left % (double) right;
     }
 
     // Unreachable.
@@ -366,7 +471,55 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Object visitGetExpr(Expr.Get expr) {
+        Object object = evaluate(expr.object);
+        if (object instanceof LoxInstance) {
+            return ((LoxInstance) object).get(expr.name, this);
+        }
+
+        throw new RuntimeError(expr.name,
+        "Only instances have properties.");
+    }
+
+    @Override
     public Object visitConditionalExpr(Conditional expr) {
         throw new UnsupportedOperationException("Unimplemented method 'visitConditionalExpr'");
+    }
+
+    @Override
+    public Object visitInnerExpr(Expr.Inner expr) {
+        LoxFunction current = currentMethod();
+
+        if (current == null) {
+            throw new RuntimeError(expr.keyword, 
+                "Cannot use 'inner()' outside of a method.");
+        }
+
+        LoxClass owner = current.getOwner();
+        LoxInstance receiver = current.getReceiver();
+
+        LoxFunction nextMethod = receiver.getKlass().findInnerMethod(owner, current.getName());
+        
+        if (nextMethod != null) {
+            nextMethod.bind(receiver).call(this, new ArrayList<>());
+        }
+
+        return null;
+        
+    }
+
+    // Adds a method when it starts executing 
+    void pushMethod(LoxFunction method) {
+        methodStack.push(method);
+    }
+
+    // Removes a method when it finishes
+    void popMethod() {
+        methodStack.pop();
+    }
+
+    // returns existing method
+    LoxFunction currentMethod() {
+        return methodStack.peek();
     }
 }

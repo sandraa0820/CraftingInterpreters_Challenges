@@ -38,6 +38,7 @@ class Parser {
 
     private Stmt declaration() {
         try {
+            if (match(CLASS)) return classDeclaration();
             if (check(FUN) && checkNext(IDENTIFIER)) {
                 advance();
                 return function("function");
@@ -52,6 +53,29 @@ class Parser {
         }
     }
 
+    private Stmt classDeclaration() {
+        Token name = consume(IDENTIFIER, "Expect class name.");
+
+        Expr.Variable superclass = null;
+        if (match(LESS)) {
+            consume(IDENTIFIER, "Expect superclass name.");
+            superclass = new Expr.Variable(previous());
+        }
+
+        consume(LEFT_BRACE, "Expect '{' before class body.");
+
+        List<Stmt.Function> methods = new ArrayList<>();
+        List<Stmt.Function> classMethods = new ArrayList<>();
+
+        while (!check(RIGHT_BRACE) && !isAtEnd()) {
+            boolean isClassMethod = match(CLASS);
+            (isClassMethod ? classMethods : methods).add(function("method"));
+        }
+
+        consume(RIGHT_BRACE, "Expect '}' after class body.");
+
+        return new Stmt.Class(name, superclass, methods, classMethods);
+    }
     private Stmt statement() {
         if (match(BREAK)) return breakStatement();
         if (match(FOR)) return forStatement();
@@ -188,8 +212,13 @@ class Parser {
 
     private Stmt.Function function(String kind) {
         Token name = consume(IDENTIFIER, "Expect " + kind + " name.");
-        consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
         List<Token> parameters = new ArrayList<>();
+
+        boolean isGetter = kind.equals("method") && !check(LEFT_PAREN);
+
+        if(!isGetter) {
+        consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
+        
         if (!check(RIGHT_PAREN)) {
             do {
                 if (parameters.size() >= 255) {
@@ -198,13 +227,15 @@ class Parser {
 
                 parameters.add(
                     consume(IDENTIFIER, "Expect parameter name."));
-            } while (match(COMMA));
+                } while (match(COMMA));
+            }
+            consume(RIGHT_PAREN, "Expect ')' after parameters.");
         }
-        consume(RIGHT_PAREN, "Expect ')' after parameters.");
 
         consume (LEFT_BRACE, "Expect '{' before " + kind + " body.");
         List<Stmt> body = block();
-        return new Stmt.Function(name, parameters, body);
+
+        return new Stmt.Function(name, parameters, body, isGetter);
     }
 
     private Expr functionExpression() {
@@ -250,6 +281,9 @@ class Parser {
             if (expr instanceof Expr.Variable) {
                 Token name = ((Expr.Variable)expr).name;
                 return new Expr.Assign(name, value);
+            } else if (expr instanceof Expr.Get) {
+                Expr.Get get = (Expr.Get)expr;
+                return new Expr.Set(get.object, get.name, value);
             }
 
             error(equals, "Invalid assignment target."); 
@@ -344,7 +378,7 @@ class Parser {
     private Expr factor() {
         Expr expr = unary();
 
-        while (match(SLASH, STAR)) {
+        while (match(SLASH, STAR, PERCENT)) {
             Token operator = previous();
             Expr right = unary();
             expr = new Expr.Binary(expr, operator, right);
@@ -382,9 +416,12 @@ class Parser {
         while (true) { 
             if (match(LEFT_PAREN)) {
                 expr = finishCall(expr);
+            } else if (match(DOT)) {
+                Token name = consume(IDENTIFIER, "Expect property name after '.'.");
+                expr = new Expr.Get(expr, name);
             } else {
               break;
-        }
+            }
     }
 
     return expr;
@@ -433,6 +470,17 @@ class Parser {
             return new Expr.Literal(previous().literal);
         }
 
+
+        if (match(SUPER)) {
+            Token keyword = previous();
+            consume(DOT, "Expect '.' after 'super'.");
+            Token method = consume(IDENTIFIER,
+            "Expect superclass method name.");
+            return new Expr.Super(keyword, method);
+        }
+
+        if (match(THIS)) return new Expr.This(previous());
+
         if (match(IDENTIFIER)) {
             return new Expr.Variable(previous());
         }
@@ -442,7 +490,15 @@ class Parser {
             consume(RIGHT_PAREN, "Expect ')' after expression.");
             return new Expr.Grouping(expr);
         }
+        
+        if (match(INNER)) {
+            Token keyword = previous();
 
+            consume(LEFT_PAREN, "Expect '(' after 'inner'.");
+            consume(RIGHT_PAREN, "Expect ')' after 'inner'.");
+
+            return new Expr.Inner(keyword);
+        }
         throw error(peek(), "Expect expression.");
     }
 

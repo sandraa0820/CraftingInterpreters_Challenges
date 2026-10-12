@@ -85,4 +85,30 @@ class AstPrinter implements Expr.Visitor<String> {
     public String visitFunctionExpr(Expr.Function expr) {
         return "(fun)";
     }
+
+    @Override 
+    public String visitGetExpr(Expr.Get expr) {
+        return parenthesize("get " + expr.name.lexeme, expr.object);
+    }
+
+    @Override
+    public String visitSetExpr(Expr.Set expr) {
+        return parenthesize("set " + expr.name.lexeme,
+            expr.object, expr.value);
+    }
+
+    @Override
+    public String visitThisExpr(Expr.This expr) {
+        return "this";
+    }
+
+    @Override
+    public String visitSuperExpr(Expr.Super expr) {
+        return "(super " + expr.method.lexeme + ")";
+    }
+
+    @Override
+    public String visitInnerExpr(Expr.Inner expr) {
+        return "inner()";
+    }
 }

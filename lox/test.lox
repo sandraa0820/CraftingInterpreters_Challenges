@@ -1,17 +1,5 @@
-{
-    var a = "A";
-
-    fun test(x) {
-        var b = "B";
-
-        {
-            var c = "C";
-            print a;
-            print x;
-            print b;
-            print c;
-        }
-    }
-
-    test("X");
-}
+print 10 % 3;
+print 8 % 2;
+print 17 % 5;
+print 10 + 7 % 3;
+print 10 % 0;
