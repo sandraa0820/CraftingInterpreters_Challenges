@@ -2,6 +2,9 @@
 #include <stdlib.h> 
 #include <string.h>
 
+#include "value_table.h"
+#include "value.h"
+#include "object.h"
 #include "common.h"
 #include "chunk.h"
 #include "debug.h" 

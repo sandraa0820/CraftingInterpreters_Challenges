@@ -1,0 +1,18 @@
+// Test 1: Create and read a global variable.
+var score = 100;
+print score;
+
+// Test 2: Update an existing global variable.
+score = 200;
+print score;
+
+// Test 3: Create another global variable.
+var health = 50;
+print health;
+
+// Test 4: Redeclare an existing global variable.
+var score = 300;
+print score;
+
+// Test 5: Use global variables in an expression.
+print score + health;
