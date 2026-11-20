@@ -1,0 +1,16 @@
+var saved;
+
+for (var i = 0; i < 2; i = i + 1) {
+  var message = "Hello!";
+
+  fun remember() {
+    print message;
+  }
+
+  saved = remember;
+  print saved;
+  continue;
+}
+
+print saved;
+saved();

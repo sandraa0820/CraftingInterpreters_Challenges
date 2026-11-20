@@ -1,0 +1,22 @@
+var first;
+var second;
+
+for (var i = 1; i <= 2; i = i + 1) {
+  for (var j = 1; j <= 2; j = j + 1) {
+    fun closure() {
+      print i;
+      print j;
+    }
+
+    if (i == 1 and j == 1) {
+      first = closure;
+    }
+
+    if (i == 2 and j == 2) {
+      second = closure;
+    }
+  }
+}
+
+first();
+second();

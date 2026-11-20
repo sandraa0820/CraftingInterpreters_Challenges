@@ -1,0 +1,51 @@
+// Step 2: Vector constructor
+fun makeVector(x, y) {
+  fun vector(operation) {
+    if (operation == "x") {
+      return x;
+    }
+
+    if (operation == "y") {
+      return y;
+    }
+
+    return nil;
+  }
+
+  return vector;
+}
+
+// Step 3: Access the x coordinate
+fun getX(vector) {
+  return vector("x");
+}
+
+// Step 3: Access the y coordinate
+fun getY(vector) {
+  return vector("y");
+}
+
+// Test the vector functions
+var v1 = makeVector(3, 5);
+var v2 = makeVector(7, 9);
+
+print getX(v1);
+print getY(v1);
+
+print getX(v2);
+print getY(v2);
+
+// Step 4: Add two vectors
+fun addVectors(v1, v2) {
+  var x = getX(v1) + getX(v2);
+  var y = getY(v1) + getY(v2);
+
+  return makeVector(x, y);
+}
+
+// Test vector addition
+var v3 = addVectors(v1, v2);
+
+print "Addition Result:";
+print getX(v3);
+print getY(v3);

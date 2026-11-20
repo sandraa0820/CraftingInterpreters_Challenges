@@ -1,0 +1,12 @@
+fun outer() {
+  var message = "Hello from closure!";
+
+  fun inner() {
+    print message;
+  }
+
+  return inner;
+}
+
+var closure = outer();
+closure();

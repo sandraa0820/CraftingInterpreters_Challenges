@@ -1,1 +1,22 @@
 *.class
+
+# Compiled executables
+/clox/clox
+/clox/clox_before
+/clox/clox_after
+/clox_ch25_original/clox
+/clox_ch25_original/clox_before
+/clox_ch25_original/clox_after
+/clox/clox_optimized
+/clox_ch25_original/benchmark
+/clox_ch25_original/clox_optimized
+/clox_ch25_original/clox_original
+
+# Object files
+*.o
+
+# macOS files
+.DS_Store
+
+# Debug files
+*.dSYM/

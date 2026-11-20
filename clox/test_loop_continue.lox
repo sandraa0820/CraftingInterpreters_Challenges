@@ -1,0 +1,19 @@
+var first;
+var second;
+
+for (var a = 1; a <= 2; a = a + 1) {
+  fun closure() {
+    print a;
+  }
+
+  if (a == 1) {
+    first = closure;
+  } else {
+    second = closure;
+  }
+
+  continue;
+}
+
+first();
+second();

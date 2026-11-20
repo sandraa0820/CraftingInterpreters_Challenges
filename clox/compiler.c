@@ -43,8 +43,14 @@ typedef struct {
 typedef struct {
   Token name;
   int depth;
+  bool isCaptured;
   bool isConstant;
 } Local;
+
+typedef struct {
+  uint8_t index;
+  bool isLocal;
+} Upvalue;
 
 typedef enum {
   TYPE_FUNCTION,
@@ -58,6 +64,7 @@ typedef struct Compiler {
 
   Local* locals;
   int localCount;
+  Upvalue upvalues[UINT8_COUNT];
   int scopeDepth;
 } Compiler;
 
@@ -65,6 +72,10 @@ typedef struct Loop {
   struct Loop* enclosing;
   int continueTarget;
   int scopeDepth;
+
+  //challenge 2 ch. 25
+  int controlSlot;
+  int iterationSlot;
 } Loop;
 
 static Loop* currentLoop = NULL;
@@ -222,6 +233,7 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
 
   Local* local = &current->locals[current->localCount++];
   local->depth = 0;
+  local->isCaptured = false;
   local->name.start = "";
   local->name.length = 0;
 }
@@ -253,7 +265,11 @@ static void endScope() {
    while (current->localCount > 0 &&
          current->locals[current->localCount - 1].depth >
             current->scopeDepth) {
-    emitByte(OP_POP);
+    if (current->locals[current->localCount - 1].isCaptured) {
+      emitByte(OP_CLOSE_UPVALUE);
+    } else {
+      emitByte(OP_POP);
+    }
     current->localCount--;
   }
 }
@@ -264,6 +280,7 @@ static void declaration();
 static uint8_t argumentList();
 static void and_(bool canAssign);
 static int resolveLocal(Compiler* compiler, Token* name);
+static int resolveUpvalue(Compiler* compiler, Token* name);
 static ParseRule* getRule(TokenType type);
 static uint8_t identifierConstant(Token* name);
 static void parsePrecedence(Precedence precedence);
@@ -380,12 +397,21 @@ static void addGlobalConstant(Token* name) {
 
 static void namedVariable(Token name, bool canAssign) {
   int arg = resolveLocal(current, &name);
+
   bool isLocal = arg != -1;
+  bool isUpvalue = false;
   bool isConstant = false;
 
   if (isLocal) {
+    // Variable belongs to the current function.
     isConstant = current->locals[arg].isConstant;
+
+  } else if ((arg = resolveUpvalue(current, &name)) != -1) {
+    // Variable belongs to an enclosing function.
+    isUpvalue = true;
+
   } else {
+    // Variable is global.
     isConstant = isGlobalConstant(&name);
     arg = identifierConstant(&name);
   }
@@ -395,16 +421,26 @@ static void namedVariable(Token name, bool canAssign) {
 
     if (isConstant) {
       error("Can't assign to a const variable.");
+
     } else if (isLocal) {
       emitLocalInstruction(
           OP_SET_LOCAL, OP_SET_LOCAL_LONG, arg);
+
+    } else if (isUpvalue) {
+      emitBytes(OP_SET_UPVALUE, (uint8_t)arg);
+
     } else {
       emitBytes(OP_SET_GLOBAL, (uint8_t)arg);
     }
+
   } else {
     if (isLocal) {
       emitLocalInstruction(
           OP_GET_LOCAL, OP_GET_LOCAL_LONG, arg);
+
+    } else if (isUpvalue) {
+      emitBytes(OP_GET_UPVALUE, (uint8_t)arg);
+
     } else {
       emitBytes(OP_GET_GLOBAL, (uint8_t)arg);
     }
@@ -535,6 +571,46 @@ static int resolveLocal(Compiler* compiler, Token* name) {
   return -1;
 }
 
+static int addUpvalue(Compiler* compiler, uint8_t index,
+                      bool isLocal) {
+  int upvalueCount = compiler->function->upvalueCount;
+
+  for (int i = 0; i < upvalueCount; i++) {
+    Upvalue* upvalue = &compiler->upvalues[i];
+    if (upvalue->index == index && upvalue->isLocal == isLocal) {
+      return i;
+    }
+  }
+
+  if (upvalueCount == UINT8_COUNT) {
+    error("Too many closure variables in function.");
+    return 0;
+  }
+
+
+  compiler->upvalues[upvalueCount].isLocal = isLocal;
+  compiler->upvalues[upvalueCount].index = index;
+  return compiler->function->upvalueCount++;
+}
+
+static int resolveUpvalue(Compiler* compiler, Token* name) {
+  if (compiler->enclosing == NULL) return -1;
+
+  int local = resolveLocal(compiler->enclosing, name);
+  if (local != -1) {
+    compiler->enclosing->locals[local].isCaptured = true;
+    return addUpvalue(compiler, (uint8_t)local, true);
+  }
+
+  int upvalue = resolveUpvalue(compiler->enclosing, name);
+  if (upvalue != -1) {
+    return addUpvalue(compiler, (uint8_t)upvalue, false);
+  }
+
+
+  return -1;
+}
+
 
 static void addLocal(Token name, bool isConstant) {
   if (current->localCount == UINT16_MAX + 1) {
@@ -545,6 +621,7 @@ static void addLocal(Token name, bool isConstant) {
   Local* local = &current->locals[current->localCount++];
   local->name = name;
   local->depth = -1;
+  local->isCaptured = false;
   local->isConstant = isConstant;
 }
 
@@ -665,7 +742,12 @@ static void function(FunctionType type) {
 
   ObjFunction* function = endCompiler();
   free(compiler.locals);
-  emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
+  emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+
+  for (int i = 0; i < function->upvalueCount; i++) {
+    emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+    emitByte(compiler.upvalues[i].index);
+  }
 }
 
 static void funDeclaration() {
@@ -728,6 +810,8 @@ static void forStatement() {
   Loop loop;
   loop.enclosing = currentLoop;
   loop.scopeDepth = current->scopeDepth;
+  loop.controlSlot = -1;
+  loop.iterationSlot = -1;
   currentLoop = &loop;
 
   consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
@@ -735,6 +819,9 @@ static void forStatement() {
     // No initializer.
   } else if (match(TOKEN_VAR)) {
     varDeclaration();
+
+    // Remember the local variable declared by the initializer.
+    loop.controlSlot = current->localCount - 1;
   } else {
     expressionStatement();
   }
@@ -764,7 +851,41 @@ static void forStatement() {
     patchJump(bodyJump);
   }
 
+    // Create a fresh variable for this iteration.
+  if (loop.controlSlot != -1) {
+    beginScope();
+
+    // Copy the control variable's current value onto the stack.
+    emitLocalInstruction(
+        OP_GET_LOCAL, OP_GET_LOCAL_LONG, loop.controlSlot);
+
+    // Register a new local with the same name.
+    Token loopVariable = current->locals[loop.controlSlot].name;
+    addLocal(loopVariable, false);
+    markInitialized();
+
+    loop.iterationSlot = current->localCount - 1;
+  }
+
   statement();
+
+  // Copy the iteration variable's final value back to
+  // the control variable before the increment runs.
+  if (loop.iterationSlot != -1) {
+    emitLocalInstruction(
+        OP_GET_LOCAL, OP_GET_LOCAL_LONG, loop.iterationSlot);
+
+    emitLocalInstruction(
+        OP_SET_LOCAL, OP_SET_LOCAL_LONG, loop.controlSlot);
+
+    // OP_SET_LOCAL leaves the value on the stack.
+    emitByte(OP_POP);
+
+    // Close captured iteration variables and remove the scope.
+    endScope();
+  }
+
+  // We will add copy-back and scope cleanup here next.
   emitLoop(loopStart);
 
   if (exitJump != -1) {
@@ -824,6 +945,8 @@ static void whileStatement() {
   loop.enclosing = currentLoop;
   loop.continueTarget = loopStart;
   loop.scopeDepth = current->scopeDepth;
+  loop.controlSlot = -1;
+  loop.iterationSlot = -1;
   currentLoop = &loop;
 
   consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
@@ -970,14 +1093,31 @@ static void continueStatement() {
     Local* local = &current->locals[i];
 
     if (local->depth <= currentLoop->scopeDepth) {
-      break;
-    }
+  break;
+  }
+
+  // If this is the loop's iteration variable,
+  // copy its value back before closing it.
+  if (i == currentLoop->iterationSlot) {
+    emitLocalInstruction(
+        OP_GET_LOCAL, OP_GET_LOCAL_LONG,
+        currentLoop->iterationSlot);
+
+    emitLocalInstruction(
+        OP_SET_LOCAL, OP_SET_LOCAL_LONG,
+        currentLoop->controlSlot);
 
     emitByte(OP_POP);
   }
 
-  // Jump back to the loop condition or increment expression.
-  emitLoop(currentLoop->continueTarget);
+  if (local->isCaptured) {
+    emitByte(OP_CLOSE_UPVALUE);
+  } else {
+      emitByte(OP_POP);
+    }
+  }
+    // Jump back to the loop condition or increment expression.
+    emitLoop(currentLoop->continueTarget);
 }
 
 static void statement() {
